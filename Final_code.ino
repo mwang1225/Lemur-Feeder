@@ -128,9 +128,9 @@ void TurnMotor(int delayTime, int numTurn){
   }
 }
 void loop() {
-  int timeOne = schedule(1);
-  int timeTwo = schedule(2);
-  int timeThree = schedule(3);
+  int timeOne = schedule(1) * 1000;
+  int timeTwo = schedule(2) * 1000;
+  int timeThree = schedule(3) * 1000;
   lcd.noBacklight();
   lcd.noDisplay();
   if (timeOne == 0) {
