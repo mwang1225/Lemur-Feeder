@@ -1,35 +1,39 @@
-#include <LiquidCrystal_I2C.h>
-#include <LowPower.h>
+#include <LiquidCrystal_I2C.h> //LCD display
+#include <LowPower.h> //Low Power mode
 #include <Wire.h>
+#define led_pin 12
 
-const int upButton = 7;
-const int downButton = 8;
-const int confirmButton = 9;
-const int in1 = 3;
-const int in2 = 2;
-int minutes = 0;
-int hr = 0;
+const int upButton = 7; //pin for button that increases time
+const int downButton = 8; //pin for button that decreases time
+const int confirmButton = 9; //pin for button that confirms feeding time
+const int in1 = 3; //pin for output to motor drive
+int minutes = 0; //minutes until next feeding
+int hr = 0; //hours until next feeding
 int upButtonState = 0;
 int downButtonState = 0;
 int confirmState = 0;
 int lastUpButtonState = 0;
 int lastDownButtonState = 0;
 int lastConfirmState = 0;
-int outputSec;
-int randInt1;
+int outputSec; //total seconds to next feeding
+int timeOne; //time until first feeding
+int timeTwo; //time between first and second feeding
+int timeThree; //time between second and third feeding
+int randInt1; //random time for first feeding if needed
 int randInt2;
 int randInt3;
+int voltage;
+int analogPin = A0;
 
 LiquidCrystal_I2C lcd (0x27, 16, 2); //defines 16x2 LCD screen at location 0x27)
 
 void setup() {
   // put your setup code here, to run once:
-  randomSeed(1);
+  randomSeed(1); //seed to synchronize feeders in same enclosure
   pinMode(in1, OUTPUT); //output voltages for motor
-  pinMode(in2, OUTPUT);
   lcd.begin(); //initialize LCD
   lcd.backlight();
-  pinMode(upButton, INPUT);
+  pinMode(upButton, INPUT); //set button pins to digital inputs
   pinMode(downButton, INPUT);
   pinMode(confirmButton, INPUT);
   randInt1 = random(15000, 45000); //set random time intervals if needed
@@ -37,18 +41,18 @@ void setup() {
   randInt3 = random(20000, 60000);
 }
 
-int schedule(int dispensal) {
-  upButtonState = 0;
+int Schedule(int dispensal) {
+  upButtonState = 0; //set all initial button states to 0 (off)
   downButtonState = 0;
   lastUpButtonState = 0;
   lastDownButtonState = 0;
   confirmState = 0;
   lastConfirmState = 0;
-  upButtonState = digitalRead(upButton);
+  upButtonState = digitalRead(upButton); //read all button states to detect changes
   downButtonState = digitalRead(downButton);
   confirmState = digitalRead(confirmButton);
   outputSec = 0;
-  hr = 2;
+  hr = 2; //default time
   minutes = 0;
   String output = "";
   if (dispensal == 1) {
@@ -63,6 +67,7 @@ int schedule(int dispensal) {
   lcd.setCursor(0, 0);
   lcd.print(output);
   confirmState = 0;
+  //if confirm state button is untouched, keep allowing time to be changed
   while (confirmState == 0) {
     upButtonState = 0;
     downButtonState = 0;
@@ -71,12 +76,8 @@ int schedule(int dispensal) {
     upButtonState = digitalRead(upButton);
     downButtonState = digitalRead(downButton);
     lcd.setCursor(0, 1);
-    if (hr >= 0 && minutes >=0){
-      lcd.print(String(hr) + " hr " + String(minutes) + " min ");
-    }
-    else {
-      lcd.print("Random");
-    }
+    lcd.print(String(hr) + " hr " + String(minutes) + " min ");
+    //if change in down button, decrease time
     if (downButtonState != lastDownButtonState) {
       minutes -= 15;
       lastDownButtonState = downButtonState;
@@ -85,6 +86,7 @@ int schedule(int dispensal) {
         hr--;
      }
     }
+    //if change in up button, increase time
     if (upButtonState != lastUpButtonState) {
       minutes += 15;
       lastUpButtonState = upButtonState;
@@ -106,44 +108,46 @@ int schedule(int dispensal) {
   if (hr >= 0 && minutes >= 0) {
     outputSec = hr * 3600 + minutes * 60;
   }
-  return outputSec; // output in seconds
+  return outputSec;
 }
 
 void TurnMotor(int delayTime, int numTurn){
+//while motor is not running, Arduino is Low Power to decrease energy consumption
   for(int x; x < int(delayTime/1000); x++){
     LowPower.powerDown(SLEEP_1S, ADC_OFF, BOD_OFF);
   }
   delay(delayTime);
-  digitalWrite(in1, HIGH);
-  digitalWrite(in2, LOW);
-  delay(14584);
-  digitalWrite(in1, LOW);
-  digitalWrite(in2, LOW);
+  digitalWrite(in1, HIGH);//turn motor on
+  delay(14584); //time needed to turn 90 degrees
+  digitalWrite(in1, LOW); //turn motor off
   if(numTurn == 3) {
     digitalWrite(in1, HIGH);
-    digitalWrite(in2, LOW);
     delay(58336);
     digitalWrite(in1, LOW);
-    digitalWrite(in2, LOW);
   }
 }
 void loop() {
-  int timeOne = schedule(1) * 1000;
-  int timeTwo = schedule(2) * 1000;
-  int timeThree = schedule(3) * 1000;
-  lcd.noBacklight();
+  int sensorValue = analogRead(analogPin);
+  float voltage = sensorValue * (5.00 / 1023.00);
+  if (voltage < 4.5) {
+    digitalWrite(led_pin, HIGH);//if the voltage is below 4.5 V, light turns on
+  }
+  timeOne = Schedule(1); //convert seconds to milliseconds
+  timeTwo = Schedule(2);
+  timeThree = Schedule(3);
+  lcd.noBacklight(); //turn LCD off after times are confirmed
   lcd.noDisplay();
-  if (timeOne == 0) {
+  if (timeOne < 0) {
     timeOne = randInt1;
   }
-  if (timeTwo == 0) {
+  if (timeTwo < 0) {
     timeTwo = randInt2;
   }
-  if (timeThree == 0) {
+  if (timeThree < 0) {
     timeThree = randInt3;
   }
   TurnMotor(timeOne, 1);
   TurnMotor(timeTwo, 2);
   TurnMotor(timeThree, 3);
-  //LowPower.powerDown(SLEEP_FOREVER, ADC_OFF, BOD_OFF);
+  LowPower.powerDown(SLEEP_FOREVER, ADC_OFF, BOD_OFF); //Arduino is in Low Power until turned off
 }
